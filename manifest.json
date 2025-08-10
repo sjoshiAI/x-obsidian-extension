@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "X to Obsidian",
+  "version": "1.0",
+  "description": "Extract URLs from X tweets and export to Obsidian",
+  
+  "permissions": [
+    "activeTab",
+    "storage",
+    "downloads",
+    "tabs"
+  ],
+  
+  "host_permissions": [
+    "https://twitter.com/*",
+    "https://x.com/*"
+  ],
+  
+  "content_scripts": [
+    {
+      "matches": [
+        "https://twitter.com/*", 
+        "https://x.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  
+  "background": {
+    "service_worker": "background.js"
+  },
+  
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "X to Obsidian"
+  }
+}
