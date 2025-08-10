@@ -91,16 +91,34 @@ class PopupController {
     exportBtn.textContent = '⏳ Exporting...';
 
     try {
+      console.log('Requesting export of', this.urls.length, 'URLs...');
       const response = await chrome.runtime.sendMessage({ action: 'exportUrls' });
+      console.log('Export response:', response);
       
       if (response && response.success) {
-        this.showStatus(`✅ Exported ${response.count} URLs to ${response.filename}`, 'success');
+        if (response.requiresPopupDownload || response.fallback) {
+          // Handle popup-based download
+          console.log('Using popup-based download method');
+          await this.handlePopupDownload();
+        } else {
+          this.showStatus(`✅ Exported ${response.count} URLs to ${response.filename}`, 'success');
+          console.log('Export successful, download ID:', response.downloadId);
+        }
       } else {
-        this.showStatus(`❌ Export failed: ${response.error}`, 'error');
+        const errorMsg = response?.error || 'Unknown error';
+        console.error('Export failed:', errorMsg);
+        this.showStatus(`❌ Export failed: ${errorMsg}`, 'error');
+        
+        // Show more detailed error info
+        if (errorMsg.includes('permission') || errorMsg.includes('Permission')) {
+          this.showStatus('❌ Permission error: Check extension permissions', 'error');
+        } else if (errorMsg.includes('download')) {
+          this.showStatus('❌ Download error: Try allowing downloads in your browser', 'error');
+        }
       }
     } catch (error) {
-      console.error('Error exporting:', error);
-      this.showStatus('❌ Export failed', 'error');
+      console.error('Error during export request:', error);
+      this.showStatus(`❌ Export failed: ${error.message}`, 'error');
     } finally {
       exportBtn.disabled = false;
       exportBtn.textContent = originalText;
@@ -175,6 +193,61 @@ class PopupController {
     setTimeout(() => {
       status.className = 'status';
     }, 5000);
+  }
+
+  async handlePopupDownload() {
+    try {
+      console.log('Handling popup-based download...');
+      
+      // Get the export data from storage
+      const result = await chrome.storage.local.get(['temp_export_data', 'temp_export_filename']);
+      
+      if (!result.temp_export_data) {
+        throw new Error('No export data found in storage');
+      }
+      
+      const markdown = result.temp_export_data;
+      const filename = result.temp_export_filename || 'x-reading-list.md';
+      
+      console.log('Creating popup download for:', filename, 'Size:', markdown.length);
+      
+      // Create a download link element using blob
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      
+      // Create a temporary anchor element and trigger download
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      
+      // Trigger the download
+      a.click();
+      
+      // Clean up immediately
+      document.body.removeChild(a);
+      
+      // Clean up the blob URL after a short delay
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(url);
+          console.log('Cleaned up blob URL');
+        } catch (e) {
+          console.warn('Error revoking object URL:', e);
+        }
+      }, 1000);
+      
+      // Clear temporary data from storage
+      await chrome.storage.local.remove(['temp_export_data', 'temp_export_filename']);
+      
+      this.showStatus(`✅ Downloaded: ${filename}`, 'success');
+      console.log('Popup download successful');
+      
+    } catch (error) {
+      console.error('Popup download failed:', error);
+      this.showStatus(`❌ Download failed: ${error.message}`, 'error');
+    }
   }
 
   truncate(text, maxLength) {

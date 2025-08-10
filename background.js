@@ -30,9 +30,16 @@ class BackgroundService {
           break;
           
         case 'exportUrls':
+          console.log('Export request received, URLs count:', this.urls.size);
           this.exportUrls()
-            .then(result => sendResponse(result))
-            .catch(error => sendResponse({ success: false, error: error.message }));
+            .then(result => {
+              console.log('Export completed, sending response:', result);
+              sendResponse(result);
+            })
+            .catch(error => {
+              console.error('Export failed with error:', error);
+              sendResponse({ success: false, error: error.message });
+            });
           return true; // Keep message channel open for async response
           
         case 'clearUrls':
@@ -91,28 +98,27 @@ class BackgroundService {
       const markdown = this.generateMarkdown();
       const filename = `x-reading-list-${new Date().toISOString().split('T')[0]}.md`;
       
-      // Create blob and download
-      const blob = new Blob([markdown], { type: 'text/markdown' });
-      const url = URL.createObjectURL(blob);
+      console.log('Generated markdown length:', markdown.length);
       
-      await chrome.downloads.download({
-        url: url,
-        filename: filename,
-        saveAs: true
+      // Since URL.createObjectURL is not available in service worker context,
+      // we'll store the data and let the popup handle the download
+      await chrome.storage.local.set({ 
+        'temp_export_data': markdown, 
+        'temp_export_filename': filename 
       });
       
-      // Clean up
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      console.log('Stored export data for popup download');
       
       return {
         success: true,
         filename: filename,
-        count: this.urls.size
+        count: this.urls.size,
+        requiresPopupDownload: true
       };
       
     } catch (error) {
       console.error('Export error:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message || 'Export failed' };
     }
   }
 
